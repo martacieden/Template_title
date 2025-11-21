@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { X, ChevronDown, Sparkles, MessageSquare } from "lucide-react"
+import { X, ChevronDown, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface CategoryModalProps {
@@ -50,20 +50,40 @@ const variables = {
 }
 
 const aiSuggestions = [
-  "{creator} vacation / time off request",
-  "{creator} {field.start} {field.end}",
-  "{creator} vacation / time off request {field.start} {field.end}",
-  "{creator} Vacation Request {field.start} to {field.end}",
-  "{organization} - {creator} Time Off {field.start} {field.end}",
-  "{creator} Time Off Request ({field.start} - {field.end})",
+  {
+    template: "{creator} vacation / time off request",
+    description: "Combines creator with vacation request type for clear context",
+  },
+  {
+    template: "{creator} {field.start} {field.end}",
+    description: "Simple date range format with creator name",
+  },
+  {
+    template: "{creator} vacation / time off request {field.start} {field.end}",
+    description: "Combines creator, request type, and date range for comprehensive context",
+  },
+  {
+    template: "{creator} Vacation Request {field.start} to {field.end}",
+    description: "Formal vacation request format with date range",
+  },
+  {
+    template: "{organization} - {creator} Time Off {field.start} {field.end}",
+    description: "Focus on organization and creator for team context",
+  },
+  {
+    template: "{creator} Time Off Request ({field.start} - {field.end})",
+    description: "Alternative format with parentheses for date range",
+  },
 ]
 
 export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [visitedSteps, setVisitedSteps] = useState<Set<number>>(new Set([0]))
   const [categoryName, setCategoryName] = useState("Vacation")
-  const [templateEnabled, setTemplateEnabled] = useState(false)
-  const [templateValue, setTemplateValue] = useState("")
+  const [templateEnabled, setTemplateEnabled] = useState(true)
+  const [templateValue, setTemplateValue] = useState(aiSuggestions[0]?.template || "")
+  const [showManualSetup, setShowManualSetup] = useState(false)
+  const [currentAISuggestionIndex, setCurrentAISuggestionIndex] = useState(0)
   const [showVariableDropdown, setShowVariableDropdown] = useState(false)
   const [showAISuggestions, setShowAISuggestions] = useState(false)
   const [cursorPosition, setCursorPosition] = useState(0)
@@ -73,16 +93,87 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const aiSuggestionsRef = useRef<HTMLDivElement>(null)
 
+  const validateTemplate = (template: string): string[] => {
+    const errors: string[] = []
+    
+    if (!template) {
+      return errors // Порожній шаблон не є помилкою
+    }
+
+    // Отримуємо всі доступні змінні
+    const allVariables = [
+      ...variables["System Fields"].map(v => v.name),
+      ...variables["Custom Fields"].map(v => v.name),
+    ]
+
+    // Перевірка на незакриті дужки
+    const openBraces = (template.match(/\{/g) || []).length
+    const closeBraces = (template.match(/\}/g) || []).length
+    
+    if (openBraces !== closeBraces) {
+      errors.push("Unclosed braces: All { } must be properly closed")
+    }
+
+    // Знаходимо всі змінні в шаблоні
+    const variableRegex = /\{([^}]+)\}/g
+    const matches = template.matchAll(variableRegex)
+    
+    for (const match of matches) {
+      const fullMatch = match[0] // {variable_name}
+      const variableName = match[1] // variable_name
+      
+      // Перевіряємо, чи змінна існує
+      if (!allVariables.includes(fullMatch)) {
+        errors.push(`"${fullMatch}" is not a valid variable`)
+      }
+    }
+
+    // Перевірка на невалідні символи всередині дужок
+    const invalidPattern = /\{[^}\s]*\s[^}]*\}/g
+    if (invalidPattern.test(template)) {
+      const invalidMatches = template.match(invalidPattern)
+      invalidMatches?.forEach(match => {
+        if (!errors.some(e => e.includes(match))) {
+          errors.push(`Invalid variable format: "${match}" (variables cannot contain spaces)`)
+        }
+      })
+    }
+
+    return errors
+  }
+
+  // Ініціалізація: встановлюємо першу AI пропозицію за замовчуванням при відкритті Title settings
+  useEffect(() => {
+    if (currentStep === 4 && !showManualSetup && aiSuggestions.length > 0) {
+      const firstSuggestion = aiSuggestions[0].template
+      setTemplateValue(firstSuggestion)
+      setCurrentAISuggestionIndex(0)
+      // Валідація першої AI пропозиції
+      const errors = validateTemplate(firstSuggestion)
+      setTemplateErrors(errors)
+    }
+  }, [currentStep, showManualSetup])
+
+  // Оновлення templateValue коли змінюється AI suggestion
+  useEffect(() => {
+    if (!showManualSetup && currentAISuggestionIndex < aiSuggestions.length) {
+      const suggestion = aiSuggestions[currentAISuggestionIndex].template
+      setTemplateValue(suggestion)
+      const errors = validateTemplate(suggestion)
+      setTemplateErrors(errors)
+    }
+  }, [currentAISuggestionIndex, showManualSetup])
+
   useEffect(() => {
     // Update preview with sample data
-    let preview = templateValue
+    let preview = templateValue || (currentAISuggestionIndex !== null && aiSuggestions[currentAISuggestionIndex] ? aiSuggestions[currentAISuggestionIndex].template : "")
     Object.values(variables)
       .flat()
       .forEach(({ name, example }) => {
         preview = preview.replace(new RegExp(name.replace(/[{}]/g, "\\$&"), "g"), example)
       })
     setPreviewText(preview)
-  }, [templateValue])
+  }, [templateValue, currentAISuggestionIndex])
 
   useEffect(() => {
     // Close dropdowns when clicking outside
@@ -134,53 +225,20 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     templateInputRef.current?.focus()
   }
 
-  const validateTemplate = (template: string): string[] => {
-    const errors: string[] = []
-    
-    if (!template) {
-      return errors // Порожній шаблон не є помилкою
+  const goToPreviousSuggestion = () => {
+    if (currentAISuggestionIndex > 0) {
+      const newIndex = currentAISuggestionIndex - 1
+      setCurrentAISuggestionIndex(newIndex)
+      // templateValue оновлюється через useEffect
     }
+  }
 
-    // Отримуємо всі доступні змінні
-    const allVariables = [
-      ...variables["System Fields"].map(v => v.name),
-      ...variables["Custom Fields"].map(v => v.name),
-    ]
-
-    // Перевірка на незакриті дужки
-    const openBraces = (template.match(/\{/g) || []).length
-    const closeBraces = (template.match(/\}/g) || []).length
-    
-    if (openBraces !== closeBraces) {
-      errors.push("Unclosed braces: All { } must be properly closed")
+  const goToNextSuggestion = () => {
+    if (currentAISuggestionIndex < aiSuggestions.length - 1) {
+      const newIndex = currentAISuggestionIndex + 1
+      setCurrentAISuggestionIndex(newIndex)
+      // templateValue оновлюється через useEffect
     }
-
-    // Знаходимо всі змінні в шаблоні
-    const variableRegex = /\{([^}]+)\}/g
-    const matches = template.matchAll(variableRegex)
-    
-    for (const match of matches) {
-      const fullMatch = match[0] // {variable_name}
-      const variableName = match[1] // variable_name
-      
-      // Перевіряємо, чи змінна існує
-      if (!allVariables.includes(fullMatch)) {
-        errors.push(`"${fullMatch}" is not a valid variable`)
-      }
-    }
-
-    // Перевірка на невалідні символи всередині дужок
-    const invalidPattern = /\{[^}\s]*\s[^}]*\}/g
-    if (invalidPattern.test(template)) {
-      const invalidMatches = template.match(invalidPattern)
-      invalidMatches?.forEach(match => {
-        if (!errors.some(e => e.includes(match))) {
-          errors.push(`Invalid variable format: "${match}" (variables cannot contain spaces)`)
-        }
-      })
-    }
-
-    return errors
   }
 
   const handleTemplateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,9 +346,9 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                       </button>
                       
                       {/* Step label */}
-                      <button
+                <button
                         onClick={() => goToStep(index)}
-                        className={cn(
+                  className={cn(
                           "ml-3 text-left flex-1 pt-1 transition-colors cursor-pointer hover:text-[#2563EB]",
                           isActive
                             ? "text-[#2563EB] font-medium"
@@ -303,7 +361,7 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                           {step.label}
                           {step.skippable && <span className="font-normal text-[#6B7280]"> (optional)</span>}
                         </div>
-                      </button>
+                </button>
                     </div>
                   )
                 })}
@@ -430,77 +488,221 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                 <div>
                   <h3 className="text-base font-semibold text-[#111827] mb-6">Title settings</h3>
 
-                  {/* Toggle Section */}
-                  <div className="flex items-start justify-between mb-6">
-                    <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-[#111827] mb-1">Automatic Title Template</h4>
-                      <p className="text-xs text-[#6B7280]">Configure automatic title generation (optional)</p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const newEnabled = !templateEnabled
-                        setTemplateEnabled(newEnabled)
-                        // Валідація при вмиканні тогла
-                        if (newEnabled && templateValue) {
-                          const errors = validateTemplate(templateValue)
-                          setTemplateErrors(errors)
-                        } else {
-                          setTemplateErrors([])
-                        }
-                      }}
-                      className={cn(
-                        "relative w-9 h-5 rounded-full transition-colors ml-4 flex-shrink-0",
-                        templateEnabled ? "bg-[#3B82F6]" : "bg-[#E5E7EB]",
-                      )}
-                    >
-                      <span
+                  {!showManualSetup ? (
+                    <div key="ai-view">
+                      {/* Automatic Title Template Card */}
+                      <div className="mb-4 border border-[#E5E7EB] rounded-lg bg-white p-4">
+                        {/* Card Header with Toggle */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-semibold text-[#111827]">Automatic Title Template</h4>
+                            </div>
+                          </div>
+                      <button
+                        onClick={() => setTemplateEnabled(!templateEnabled)}
                         className={cn(
-                          "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform",
-                          templateEnabled && "translate-x-4",
+                              "relative w-9 h-5 rounded-full transition-colors ml-4 flex-shrink-0",
+                          templateEnabled ? "bg-[#3B82F6]" : "bg-[#E5E7EB]",
                         )}
-                      />
-                    </button>
-                  </div>
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform",
+                            templateEnabled && "translate-x-4",
+                          )}
+                        />
+                      </button>
+                    </div>
 
-                  {templateEnabled && (
-                    <div className="space-y-3">
-                      <div className="relative">
-                        <div className="bg-white border border-[#D1D5DB] rounded-md p-3 focus-within:ring-[3px] focus-within:ring-blue-500/10 focus-within:border-blue-500">
-                          <input
-                            ref={templateInputRef}
-                            type="text"
-                            value={templateValue}
-                            onChange={handleTemplateInputChange}
-                            onSelect={(e) => setCursorPosition(e.currentTarget.selectionStart || 0)}
-                            placeholder="e.g. {creator} - {field.project_name}"
-                            className="w-full text-xs font-mono focus:outline-none bg-transparent"
-                          />
-                        </div>
+                        {/* Current AI Suggestion Card */}
+                        {templateEnabled && currentAISuggestionIndex < aiSuggestions.length && (
+                          <div>
+                            {/* Header with AI Recommendation indicator */}
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="text-xs font-semibold text-[#2563EB] uppercase">
+                                AI Recommendation {currentAISuggestionIndex + 1} of {aiSuggestions.length}
+                              </span>
+                            </div>
 
-                        {showVariableDropdown && (
-                          <div
-                            ref={dropdownRef}
-                            className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D1D5DB] rounded-md shadow-lg max-h-[200px] overflow-y-auto z-10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#E5E7EB] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#D1D5DB]"
-                          >
-                            {Object.entries(variables).map(([category, items]) => (
-                              <div key={category}>
-                                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase text-[#6B7280] bg-[#F9FAFB] border-b border-[#E5E7EB]">
-                                  {category}
-                                </div>
-                                {items.map(({ name, example }) => (
-                                  <button
-                                    key={name}
-                                    onClick={() => insertVariable(name)}
-                                    className="w-full px-3 py-2 flex items-center justify-between hover:bg-[#F3F4F6] text-left"
-                                  >
-                                    <span className="text-xs font-medium font-mono">{name}</span>
-                                    <span className="text-[11px] text-[#9CA3AF]">{example}</span>
-                                  </button>
-                                ))}
+                          {/* Description */}
+                          <p className="text-xs text-[#6B7280] mb-4">
+                            {aiSuggestions[currentAISuggestionIndex].description}
+                          </p>
+
+                          {/* Inline Template Editor */}
+                          <div className="mb-4 space-y-2">
+                            <div className="relative">
+                              <div className="bg-white border border-[#D1D5DB] rounded-md p-3 focus-within:ring-[3px] focus-within:ring-blue-500/10 focus-within:border-blue-500">
+                                <input
+                                  type="text"
+                                  value={templateValue}
+                                  onChange={handleTemplateInputChange}
+                                  onSelect={(e) => setCursorPosition(e.currentTarget.selectionStart || 0)}
+                                  onFocus={(e) => setCursorPosition(e.currentTarget.selectionStart || 0)}
+                                  className="w-full text-xs font-mono focus:outline-none bg-transparent"
+                                />
                               </div>
-                            ))}
+
+                              {showVariableDropdown && (
+                                <div
+                                  ref={dropdownRef}
+                                  className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D1D5DB] rounded-md shadow-lg max-h-[200px] overflow-y-auto z-10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#E5E7EB] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#D1D5DB]"
+                                >
+                                  {Object.entries(variables).map(([category, items]) => (
+                                    <div key={category}>
+                                      <div className="px-3 py-1.5 text-[11px] font-semibold uppercase text-[#6B7280] bg-[#F9FAFB] border-b border-[#E5E7EB]">
+                                        {category}
+                                      </div>
+                                      {items.map(({ name, example }) => (
+                                        <button
+                                          key={name}
+                                          onClick={() => insertVariable(name)}
+                                          className="w-full px-3 py-2 flex items-center justify-between hover:bg-[#F3F4F6] text-left"
+                                        >
+                                          <span className="text-xs font-medium font-mono">{name}</span>
+                                          <span className="text-[11px] text-[#9CA3AF]">{example}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Insert Variable Button */}
+                            <button
+                              onClick={() => {
+                                setShowVariableDropdown(!showVariableDropdown)
+                                setShowAISuggestions(false)
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
+                            >
+                              Insert Variable
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </div>
+
+                          {/* Preview */}
+                          <div className="mb-4 p-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-md">
+                            <div className="flex items-start justify-between mb-1">
+                              <p className="text-xs font-semibold text-[#374151]">Preview:</p>
+                              <span className={cn(
+                                "text-xs",
+                                templateErrors.length > 0 ? "text-red-600" : "text-green-600"
+                              )}>
+                                {templateErrors.length > 0 ? "❌ Invalid" : "✅ Ready"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#111827]">
+                              {previewText || "No preview available"}
+                            </p>
+                          </div>
+
+                          {/* Navigation Buttons */}
+                          <div className="flex items-center justify-between gap-3">
+                            <button
+                              onClick={goToPreviousSuggestion}
+                              disabled={currentAISuggestionIndex === 0}
+                              className={cn(
+                                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1",
+                                currentAISuggestionIndex === 0
+                                  ? "text-[#9CA3AF] cursor-not-allowed bg-[#F3F4F6]"
+                                  : "text-[#2563EB] hover:bg-blue-50 bg-white border border-[#D1D5DB]"
+                              )}
+                            >
+                              ← Previous
+                            </button>
+                            <button
+                              onClick={goToNextSuggestion}
+                              disabled={currentAISuggestionIndex === aiSuggestions.length - 1}
+                              className={cn(
+                                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1",
+                                currentAISuggestionIndex === aiSuggestions.length - 1
+                                  ? "text-[#9CA3AF] cursor-not-allowed bg-[#F3F4F6]"
+                                  : "text-[#2563EB] hover:bg-blue-50 bg-white border border-[#D1D5DB]"
+                              )}
+                            >
+                              Next →
+                            </button>
+                          </div>
+                        </div>
+                        )}
+
+                        {/* Manual Setup Link - Low Priority */}
+                        {templateEnabled && (
+                          <div className="mt-4 text-center pt-3 border-t border-[#E5E7EB]">
+                            <p className="text-xs text-[#6B7280] mb-1">
+                              Not satisfied with these suggestions?
+                            </p>
+                            <button
+                              onClick={() => setShowManualSetup(true)}
+                              className="text-xs text-[#2563EB] hover:underline font-medium"
+                            >
+                              Set up manually
+                            </button>
                           </div>
                         )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div key="manual-view">
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h4 className="text-sm font-semibold text-[#111827] mb-1">Automatic Title Template</h4>
+                            <p className="text-xs text-[#6B7280]">Configure automatic title generation (optional)</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShowManualSetup(false)
+                              setCurrentAISuggestionIndex(0)
+                            }}
+                            className="text-xs text-[#2563EB] hover:underline"
+                          >
+                            ← Back to AI suggestions
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <div className="bg-white border border-[#D1D5DB] rounded-md p-2.5 focus-within:ring-[3px] focus-within:ring-blue-500/10 focus-within:border-blue-500">
+                            <input
+                              ref={templateInputRef}
+                              type="text"
+                              value={templateValue}
+                              onChange={handleTemplateInputChange}
+                              onSelect={(e) => setCursorPosition(e.currentTarget.selectionStart || 0)}
+                              placeholder="e.g. {creator} - {field.project_name}"
+                              className="w-full text-xs font-mono focus:outline-none bg-transparent"
+                            />
+                          </div>
+
+                          {showVariableDropdown && (
+                            <div
+                              ref={dropdownRef}
+                            className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D1D5DB] rounded-md shadow-lg max-h-[200px] overflow-y-auto z-10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#E5E7EB] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#D1D5DB]"
+                            >
+                              {Object.entries(variables).map(([category, items]) => (
+                                <div key={category}>
+                                  <div className="px-3 py-1.5 text-[11px] font-semibold uppercase text-[#6B7280] bg-[#F9FAFB] border-b border-[#E5E7EB]">
+                                    {category}
+                                  </div>
+                                  {items.map(({ name, example }) => (
+                                    <button
+                                      key={name}
+                                      onClick={() => insertVariable(name)}
+                                      className="w-full px-3 py-2 flex items-center justify-between hover:bg-[#F3F4F6] text-left"
+                                    >
+                                      <span className="text-xs font-medium font-mono">{name}</span>
+                                      <span className="text-[11px] text-[#9CA3AF]">{example}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
                         {showAISuggestions && (
                           <div
@@ -513,51 +715,31 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                             {aiSuggestions.map((suggestion, index) => (
                               <button
                                 key={index}
-                                onClick={() => insertAISuggestion(suggestion)}
+                                onClick={() => insertAISuggestion(suggestion.template)}
                                 className="w-full px-3 py-2.5 flex items-start hover:bg-[#F3F4F6] text-left border-b border-[#E5E7EB] last:border-b-0"
                               >
-                                <Sparkles className="w-3 h-3 text-[#9333EA] mt-0.5 mr-2 flex-shrink-0" />
-                                <span className="text-xs font-mono text-[#111827] break-words">{suggestion}</span>
+                                <span className="text-xs font-mono text-[#111827] break-words">{suggestion.template}</span>
                               </button>
                             ))}
                           </div>
                         )}
                       </div>
+                      </div>
 
-                      <div className="flex gap-2">
-                        <button
+                      <div className="flex gap-2 mt-3">
+                          <button
                           onClick={() => {
                             setShowVariableDropdown(!showVariableDropdown)
                             setShowAISuggestions(false)
                           }}
-                          className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
-                        >
-                          Insert Variable
-                          <ChevronDown className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setShowAISuggestions(!showAISuggestions)
-                            setShowVariableDropdown(false)
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
-                        >
-                          <Sparkles className="w-3 h-3 text-[#9333EA]" />
-                          AI Suggestions
-                        </button>
-                        <button
-                          onClick={() => {
-                            setTemplateValue("")
-                            setTemplateErrors([])
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
-                        >
-                          <X className="w-3 h-3 text-[#EF4444]" />
-                          Clear
-                        </button>
-                      </div>
+                            className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
+                          >
+                            Insert Variable
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        </div>
 
-                      <div className="mt-3 p-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-md">
+                      <div className="mt-3 p-2.5 bg-[#F9FAFB] border border-[#E5E7EB] rounded-md">
                         <div className="flex items-start justify-between mb-1">
                           <p className="text-xs font-semibold text-[#374151]">Preview:</p>
                           {templateValue && (
