@@ -164,6 +164,14 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     }
   }, [currentAISuggestionIndex, showManualSetup])
 
+  // Очищення поля при переході на Manual Setup
+  useEffect(() => {
+    if (showManualSetup) {
+      setTemplateValue("")
+      setTemplateErrors([])
+    }
+  }, [showManualSetup])
+
   useEffect(() => {
     // Update preview with sample data
     let preview = templateValue || (currentAISuggestionIndex !== null && aiSuggestions[currentAISuggestionIndex] ? aiSuggestions[currentAISuggestionIndex].template : "")
