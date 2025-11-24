@@ -164,10 +164,11 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     }
   }, [currentAISuggestionIndex, showManualSetup])
 
-  // Очищення поля при переході на Manual Setup
+  // При переході на Manual Setup зберігаємо поточне значення (якщо воно є), інакше очищаємо
   useEffect(() => {
     if (showManualSetup) {
-      setTemplateValue("")
+      // Якщо templateValue порожнє, залишаємо порожнім, інакше залишаємо поточне значення
+      // Це дозволяє редагувати поточний AI suggestion або створити новий з нуля
       setTemplateErrors([])
     }
   }, [showManualSetup])
@@ -555,58 +556,29 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                             )}
                           </div>
 
-                          {/* Inline Template Editor */}
+                          {/* Inline Template Display */}
                           <div className="mb-4 space-y-2">
                             <div className="relative">
-                              <div className="bg-white border border-[#D1D5DB] rounded-md p-3 focus-within:ring-[3px] focus-within:ring-blue-500/10 focus-within:border-blue-500">
+                              <div className="bg-[#F9FAFB] border border-[#D1D5DB] rounded-md p-3">
                                 <input
                                   type="text"
                                   value={templateValue}
-                                  onChange={handleTemplateInputChange}
-                                  onSelect={(e) => setCursorPosition(e.currentTarget.selectionStart || 0)}
-                                  onFocus={(e) => setCursorPosition(e.currentTarget.selectionStart || 0)}
-                                  className="w-full text-xs font-mono focus:outline-none bg-transparent"
+                                  readOnly
+                                  className="w-full text-xs font-mono focus:outline-none bg-transparent text-[#111827] cursor-default"
                                 />
                               </div>
-
-                              {showVariableDropdown && (
-                                <div
-                                  ref={dropdownRef}
-                                  className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#D1D5DB] rounded-md shadow-lg max-h-[200px] overflow-y-auto z-10 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#E5E7EB] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#D1D5DB]"
+                              <div className="mt-2 flex items-center justify-between">
+                                <p className="text-xs text-[#6B7280]">Need to customize this?</p>
+                                <button
+                                  onClick={() => setShowManualSetup(true)}
+                                  className="text-xs text-[#2563EB] hover:underline font-medium"
                                 >
-                                  {Object.entries(variables).map(([category, items]) => (
-                                    <div key={category}>
-                                      <div className="px-3 py-1.5 text-[11px] font-semibold uppercase text-[#6B7280] bg-[#F9FAFB] border-b border-[#E5E7EB]">
-                                        {category}
-                                      </div>
-                                      {items.map(({ name, example }) => (
-                                        <button
-                                          key={name}
-                                          onClick={() => insertVariable(name)}
-                                          className="w-full px-3 py-2 flex items-center justify-between hover:bg-[#F3F4F6] text-left"
-                                        >
-                                          <span className="text-xs font-medium font-mono">{name}</span>
-                                          <span className="text-[11px] text-[#9CA3AF]">{example}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                                  Edit template
+                                </button>
+                              </div>
                             </div>
 
-                            {/* Add Variable Button */}
-                            <button
-                              onClick={() => {
-                                setShowVariableDropdown(!showVariableDropdown)
-                                setShowAISuggestions(false)
-                              }}
-                              className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
-                            >
-                              + Variable
-                              <ChevronDown className="w-3 h-3" />
-                            </button>
-                          </div>
+                            </div>
 
                           {/* Preview */}
                           <div className="mb-4 p-3 bg-[#EFF6FF] border border-[#DBEAFE] rounded-md">
@@ -628,16 +600,18 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
 
                         {/* Manual Setup Link - Low Priority */}
                         {templateEnabled && (
-                          <div className="mt-4 text-center pt-3 border-t border-[#E5E7EB]">
-                            <p className="text-xs text-[#6B7280] mb-1">
-                              Not satisfied with these suggestions?
-                            </p>
-                            <button
-                              onClick={() => setShowManualSetup(true)}
-                              className="text-xs text-[#2563EB] hover:underline font-medium"
-                            >
-                              Set up manually
-                            </button>
+                          <div className="mt-4 pt-3 border-t border-[#E5E7EB]">
+                            <div className="flex items-center justify-start gap-2">
+                              <p className="text-sm text-[#111827]">
+                                Not satisfied with these suggestions?
+                              </p>
+                              <button
+                                onClick={() => setShowManualSetup(true)}
+                                className="px-3 py-1.5 text-xs font-medium text-[#2563EB] border border-[#2563EB] rounded-md hover:bg-[#EFF6FF] transition-colors"
+                              >
+                                Set up manually
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
