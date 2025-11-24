@@ -528,8 +528,8 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                         {templateEnabled && currentAISuggestionIndex < aiSuggestions.length && (
                           <div>
                           {/* Description with Navigation */}
-                          <div className="flex items-center justify-between mb-4">
-                            <p className="text-sm text-[#6B7280] flex-1">
+                          <div className="flex items-center justify-between mb-4 min-h-[40px]">
+                            <p className="text-sm text-[#6B7280] flex-1 min-h-[40px] flex items-center">
                               {aiSuggestions[currentAISuggestionIndex].description}
                             </p>
                             {!showManualSetup && aiSuggestions.length > 1 && (
