@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { X, ChevronDown, MessageSquare } from "lucide-react"
+import { X, ChevronDown, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface CategoryModalProps {
@@ -234,19 +234,19 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
   }
 
   const goToPreviousSuggestion = () => {
-    if (currentAISuggestionIndex > 0) {
-      const newIndex = currentAISuggestionIndex - 1
-      setCurrentAISuggestionIndex(newIndex)
-      // templateValue оновлюється через useEffect
-    }
+    const newIndex = currentAISuggestionIndex === 0 
+      ? aiSuggestions.length - 1 
+      : currentAISuggestionIndex - 1
+    setCurrentAISuggestionIndex(newIndex)
+    // templateValue оновлюється через useEffect
   }
 
   const goToNextSuggestion = () => {
-    if (currentAISuggestionIndex < aiSuggestions.length - 1) {
-      const newIndex = currentAISuggestionIndex + 1
-      setCurrentAISuggestionIndex(newIndex)
-      // templateValue оновлюється через useEffect
-    }
+    const newIndex = currentAISuggestionIndex === aiSuggestions.length - 1
+      ? 0
+      : currentAISuggestionIndex + 1
+    setCurrentAISuggestionIndex(newIndex)
+    // templateValue оновлюється через useEffect
   }
 
   const handleTemplateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -494,7 +494,10 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
 
               {currentStep === 4 && (
                 <div>
-                  <h3 className="text-base font-semibold text-[#111827] mb-6">Title settings</h3>
+                  <h3 className="text-base font-semibold text-[#111827] mb-1">Title settings</h3>
+                  <p className="text-sm text-[#6B7280] mb-6">
+                    Create a title template that automatically fills in information when users create items. For example, use {`{creator}`} to show who created it, or {`{field.start}`} and {`{field.end}`} for dates. The system will replace these placeholders with actual values.
+                  </p>
 
                   {!showManualSetup ? (
                     <div key="ai-view">
@@ -503,9 +506,7 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                         {/* Card Header with Toggle */}
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-sm font-semibold text-[#111827]">Automatic Title Template</h4>
-                            </div>
+                            <h4 className="text-sm font-semibold text-[#111827]">Automatic Title Template</h4>
                           </div>
                       <button
                         onClick={() => setTemplateEnabled(!templateEnabled)}
@@ -526,17 +527,33 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                         {/* Current AI Suggestion Card */}
                         {templateEnabled && currentAISuggestionIndex < aiSuggestions.length && (
                           <div>
-                            {/* Header with AI Recommendation indicator */}
-                            <div className="flex items-center justify-between mb-3">
-                              <span className="text-xs font-semibold text-[#2563EB] uppercase">
-                                AI Recommendation {currentAISuggestionIndex + 1} of {aiSuggestions.length}
-                              </span>
-                            </div>
-
-                          {/* Description */}
-                          <p className="text-xs text-[#6B7280] mb-4">
-                            {aiSuggestions[currentAISuggestionIndex].description}
-                          </p>
+                          {/* Description with Navigation */}
+                          <div className="flex items-center justify-between mb-4">
+                            <p className="text-sm text-[#6B7280] flex-1">
+                              {aiSuggestions[currentAISuggestionIndex].description}
+                            </p>
+                            {!showManualSetup && aiSuggestions.length > 1 && (
+                              <div className="flex items-center gap-2 ml-4">
+                                <button
+                                  onClick={goToPreviousSuggestion}
+                                  className="w-8 h-8 flex items-center justify-center rounded-md transition-colors text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] bg-white border border-[#D1D5DB]"
+                                  title="Previous suggestion"
+                                >
+                                  <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs text-[#6B7280] min-w-[60px] text-center">
+                                  {currentAISuggestionIndex + 1} / {aiSuggestions.length}
+                                </span>
+                                <button
+                                  onClick={goToNextSuggestion}
+                                  className="w-8 h-8 flex items-center justify-center rounded-md transition-colors text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] bg-white border border-[#D1D5DB]"
+                                  title="Next suggestion"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
 
                           {/* Inline Template Editor */}
                           <div className="mb-4 space-y-2">
@@ -578,7 +595,7 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                               )}
                             </div>
 
-                            {/* Insert Variable Button */}
+                            {/* Add Variable Button */}
                             <button
                               onClick={() => {
                                 setShowVariableDropdown(!showVariableDropdown)
@@ -586,15 +603,15 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                               }}
                               className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
                             >
-                              Insert Variable
+                              + Variable
                               <ChevronDown className="w-3 h-3" />
                             </button>
                           </div>
 
                           {/* Preview */}
-                          <div className="mb-4 p-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-md">
+                          <div className="mb-4 p-3 bg-[#EFF6FF] border border-[#DBEAFE] rounded-md">
                             <div className="flex items-start justify-between mb-1">
-                              <p className="text-xs font-semibold text-[#374151]">Preview:</p>
+                              <p className="text-xs font-semibold text-[#1E40AF]">Preview:</p>
                               <span className={cn(
                                 "text-xs",
                                 templateErrors.length > 0 ? "text-red-600" : "text-green-600"
@@ -602,37 +619,9 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                                 {templateErrors.length > 0 ? "❌ Invalid" : "✅ Ready"}
                               </span>
                             </div>
-                            <p className="text-xs text-[#111827]">
+                            <p className="text-xs text-[#1E3A8A]">
                               {previewText || "No preview available"}
                             </p>
-                          </div>
-
-                          {/* Navigation Buttons */}
-                          <div className="flex items-center justify-between gap-3">
-                            <button
-                              onClick={goToPreviousSuggestion}
-                              disabled={currentAISuggestionIndex === 0}
-                              className={cn(
-                                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1",
-                                currentAISuggestionIndex === 0
-                                  ? "text-[#9CA3AF] cursor-not-allowed bg-[#F3F4F6]"
-                                  : "text-[#2563EB] hover:bg-blue-50 bg-white border border-[#D1D5DB]"
-                              )}
-                            >
-                              ← Previous
-                            </button>
-                            <button
-                              onClick={goToNextSuggestion}
-                              disabled={currentAISuggestionIndex === aiSuggestions.length - 1}
-                              className={cn(
-                                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1",
-                                currentAISuggestionIndex === aiSuggestions.length - 1
-                                  ? "text-[#9CA3AF] cursor-not-allowed bg-[#F3F4F6]"
-                                  : "text-[#2563EB] hover:bg-blue-50 bg-white border border-[#D1D5DB]"
-                              )}
-                            >
-                              Next →
-                            </button>
                           </div>
                         </div>
                         )}
@@ -742,14 +731,14 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                           }}
                             className="px-3 py-1.5 text-xs font-medium bg-white border border-[#D1D5DB] rounded-md hover:bg-[#F9FAFB] flex items-center gap-1"
                           >
-                            Insert Variable
+                            + Variable
                             <ChevronDown className="w-3 h-3" />
                           </button>
                         </div>
 
-                      <div className="mt-3 p-2.5 bg-[#F9FAFB] border border-[#E5E7EB] rounded-md">
+                      <div className="mt-3 p-3 bg-[#EFF6FF] border border-[#DBEAFE] rounded-md">
                         <div className="flex items-start justify-between mb-1">
-                          <p className="text-xs font-semibold text-[#374151]">Preview:</p>
+                          <p className="text-xs font-semibold text-[#1E40AF]">Preview:</p>
                           {templateValue && (
                             <span className={cn(
                               "text-xs",
@@ -759,7 +748,7 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-[#111827] mb-2">
+                        <p className="text-xs text-[#1E3A8A] mb-2">
                           {templateValue ? (previewText || "No preview available") : "Enter a template to see preview"}
                         </p>
                         {templateErrors.length > 0 && (
