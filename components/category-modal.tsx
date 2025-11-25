@@ -149,19 +149,23 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     return errors
   }
 
-  // При переході на Manual Setup зберігаємо поточне значення (якщо воно є), інакше очищаємо
-  useEffect(() => {
-    if (showManualSetup) {
-      // Якщо є вибраний варіант, використовуємо його template
-      if (selectedSuggestionIndex !== null && displayedSuggestions[selectedSuggestionIndex]) {
-        const selectedTemplate = displayedSuggestions[selectedSuggestionIndex].template
-        setTemplateValue(selectedTemplate)
-        const errors = validateTemplate(selectedTemplate)
-        setTemplateErrors(errors)
-      }
-      // Якщо templateValue порожнє, залишаємо порожнім
+  // Обробка переходу в manual mode через "Edit"
+  const handleEditSuggestion = () => {
+    if (selectedSuggestionIndex !== null && displayedSuggestions[selectedSuggestionIndex]) {
+      const selectedTemplate = displayedSuggestions[selectedSuggestionIndex].template
+      setTemplateValue(selectedTemplate)
+      const errors = validateTemplate(selectedTemplate)
+      setTemplateErrors(errors)
+      setShowManualSetup(true)
     }
-  }, [showManualSetup, selectedSuggestionIndex])
+  }
+
+  // Обробка переходу в manual mode через "Customize manually"
+  const handleCustomizeManually = () => {
+    setTemplateValue("")
+    setTemplateErrors([])
+    setShowManualSetup(true)
+  }
 
   useEffect(() => {
     // Update preview with sample data
@@ -663,7 +667,7 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation()
-                                            setShowManualSetup(true)
+                                            handleEditSuggestion()
                                           }}
                                           className="text-sm text-[#2563EB] hover:underline font-medium ml-2"
                                         >
@@ -693,7 +697,7 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                                   Don't like any of these options?
                                 </p>
                                 <button
-                                  onClick={() => setShowManualSetup(true)}
+                                  onClick={handleCustomizeManually}
                                   className="text-sm text-[#2563EB] hover:underline font-medium"
                                 >
                                   Customize manually
