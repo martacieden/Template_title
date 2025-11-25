@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { X, ChevronDown, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react"
+import { X, ChevronDown, ChevronLeft, ChevronRight, MessageSquare, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface CategoryModalProps {
@@ -55,8 +55,12 @@ const aiSuggestions = [
     description: "Combines creator with vacation request type for clear context",
   },
   {
-    template: "{creator} {field.start} {field.end}",
-    description: "Simple date range format with creator name",
+    template: "Vacation Request - {creator} ({field.start} - {field.end})",
+    description: "Formal vacation request format with creator and date range",
+  },
+  {
+    template: "Time Off: {creator} | {field.start} - {field.end}, 2024",
+    description: "Alternative format with creator and date range",
   },
   {
     template: "{creator} vacation / time off request {field.start} {field.end}",
@@ -80,10 +84,13 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [visitedSteps, setVisitedSteps] = useState<Set<number>>(new Set([0]))
   const [categoryName, setCategoryName] = useState("Vacation")
-  const [templateEnabled, setTemplateEnabled] = useState(true)
+  const [templateEnabled, setTemplateEnabled] = useState(false)
   const [templateValue, setTemplateValue] = useState(aiSuggestions[0]?.template || "")
   const [showManualSetup, setShowManualSetup] = useState(false)
   const [currentAISuggestionIndex, setCurrentAISuggestionIndex] = useState(0)
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<number | null>(null)
+  const [displayedSuggestions, setDisplayedSuggestions] = useState(aiSuggestions.slice(0, 3))
+  const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false)
   const [showVariableDropdown, setShowVariableDropdown] = useState(false)
   const [showAISuggestions, setShowAISuggestions] = useState(false)
   const [cursorPosition, setCursorPosition] = useState(0)
@@ -142,47 +149,40 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     return errors
   }
 
-  // Ініціалізація: встановлюємо першу AI пропозицію за замовчуванням при відкритті Title settings
-  useEffect(() => {
-    if (currentStep === 4 && !showManualSetup && aiSuggestions.length > 0) {
-      const firstSuggestion = aiSuggestions[0].template
-      setTemplateValue(firstSuggestion)
-      setCurrentAISuggestionIndex(0)
-      // Валідація першої AI пропозиції
-      const errors = validateTemplate(firstSuggestion)
-      setTemplateErrors(errors)
-    }
-  }, [currentStep, showManualSetup])
-
-  // Оновлення templateValue коли змінюється AI suggestion
-  useEffect(() => {
-    if (!showManualSetup && currentAISuggestionIndex < aiSuggestions.length) {
-      const suggestion = aiSuggestions[currentAISuggestionIndex].template
-      setTemplateValue(suggestion)
-      const errors = validateTemplate(suggestion)
-      setTemplateErrors(errors)
-    }
-  }, [currentAISuggestionIndex, showManualSetup])
-
   // При переході на Manual Setup зберігаємо поточне значення (якщо воно є), інакше очищаємо
   useEffect(() => {
     if (showManualSetup) {
-      // Якщо templateValue порожнє, залишаємо порожнім, інакше залишаємо поточне значення
-      // Це дозволяє редагувати поточний AI suggestion або створити новий з нуля
-      setTemplateErrors([])
+      // Якщо є вибраний варіант, використовуємо його template
+      if (selectedSuggestionIndex !== null && displayedSuggestions[selectedSuggestionIndex]) {
+        const selectedTemplate = displayedSuggestions[selectedSuggestionIndex].template
+        setTemplateValue(selectedTemplate)
+        const errors = validateTemplate(selectedTemplate)
+        setTemplateErrors(errors)
+      }
+      // Якщо templateValue порожнє, залишаємо порожнім
     }
-  }, [showManualSetup])
+  }, [showManualSetup, selectedSuggestionIndex])
 
   useEffect(() => {
     // Update preview with sample data
-    let preview = templateValue || (currentAISuggestionIndex !== null && aiSuggestions[currentAISuggestionIndex] ? aiSuggestions[currentAISuggestionIndex].template : "")
-    Object.values(variables)
-      .flat()
-      .forEach(({ name, example }) => {
-        preview = preview.replace(new RegExp(name.replace(/[{}]/g, "\\$&"), "g"), example)
-      })
-    setPreviewText(preview)
-  }, [templateValue, currentAISuggestionIndex])
+    if (templateValue) {
+      const preview = generatePreviewText(templateValue)
+      setPreviewText(preview)
+    } else {
+      setPreviewText("")
+    }
+  }, [templateValue])
+  
+  // Автоматично вибираємо третю опцію при включенні тоглу (тільки якщо не генеруємо)
+  useEffect(() => {
+    if (templateEnabled && !showManualSetup && !isGeneratingSuggestions && displayedSuggestions.length > 0 && selectedSuggestionIndex === null) {
+      setSelectedSuggestionIndex(2) // Третя опція вибрана за замовчуванням (як на скріншоті)
+      const selectedTemplate = displayedSuggestions[2].template
+      setTemplateValue(selectedTemplate)
+      const errors = validateTemplate(selectedTemplate)
+      setTemplateErrors(errors)
+    }
+  }, [templateEnabled, showManualSetup, isGeneratingSuggestions, displayedSuggestions, selectedSuggestionIndex])
 
   useEffect(() => {
     // Close dropdowns when clicking outside
@@ -243,11 +243,84 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
   }
 
   const goToNextSuggestion = () => {
-    const newIndex = currentAISuggestionIndex === aiSuggestions.length - 1
-      ? 0
+    const newIndex = currentAISuggestionIndex === aiSuggestions.length - 1 
+      ? 0 
       : currentAISuggestionIndex + 1
     setCurrentAISuggestionIndex(newIndex)
     // templateValue оновлюється через useEffect
+  }
+
+  // Генерація preview тексту з реальними значеннями
+  const generatePreviewText = (template: string): string => {
+    let preview = template
+    // Замінюємо змінні на приклади (в правильному порядку, щоб уникнути конфліктів)
+    // Спочатку складніші паттерни
+    preview = preview.replace(/{field.start}/g, "Dec 15")
+    preview = preview.replace(/{field.end}/g, "Dec 20")
+    preview = preview.replace(/{field.project_name}/g, "Summer Vacation")
+    preview = preview.replace(/{field.budget}/g, "$50,000")
+    preview = preview.replace(/{field.location}/g, "Building A")
+    // Потім простіші
+    preview = preview.replace(/{creator}/g, "John Doe")
+    preview = preview.replace(/{organization}/g, "Cresset")
+    preview = preview.replace(/{name}/g, "Vacation")
+    preview = preview.replace(/{due_date}/g, "03/15/2024")
+    preview = preview.replace(/{created_date}/g, "01/20/2024")
+    preview = preview.replace(/{freeform}/g, "User-entered text")
+    // Додаємо рік для шаблонів з датами, якщо його немає
+    if (preview.includes("Dec 15 - Dec 20") && !preview.includes("2024")) {
+      preview = preview.replace("Dec 15 - Dec 20", "Dec 15 - Dec 20, 2024")
+    }
+    return preview
+  }
+
+  // Генерація нових опцій (перемішуємо масив)
+  const generateNewOptions = () => {
+    setIsGeneratingSuggestions(true)
+    // Симуляція генерації (1-2 секунди)
+    setTimeout(() => {
+      const shuffled = [...aiSuggestions].sort(() => Math.random() - 0.5)
+      setDisplayedSuggestions(shuffled.slice(0, 3))
+      // Скидаємо вибір
+      setSelectedSuggestionIndex(null)
+      setIsGeneratingSuggestions(false)
+    }, 1500)
+  }
+
+  // Обробка включення тоглу
+  const handleToggleEnabled = () => {
+    const newValue = !templateEnabled
+    setTemplateEnabled(newValue)
+    
+    if (newValue) {
+      // Показуємо лоадер при включенні
+      setIsGeneratingSuggestions(true)
+      setTimeout(() => {
+        setIsGeneratingSuggestions(false)
+        // Автоматично вибираємо третю опцію
+        if (displayedSuggestions.length > 0 && selectedSuggestionIndex === null) {
+          setSelectedSuggestionIndex(2)
+          const selectedTemplate = displayedSuggestions[2].template
+          setTemplateValue(selectedTemplate)
+          const errors = validateTemplate(selectedTemplate)
+          setTemplateErrors(errors)
+        }
+      }, 1500)
+    } else {
+      // При вимкненні скидаємо вибір
+      setSelectedSuggestionIndex(null)
+      setTemplateValue("")
+      setTemplateErrors([])
+    }
+  }
+
+  // Обробка вибору AI suggestion
+  const handleSelectSuggestion = (index: number) => {
+    setSelectedSuggestionIndex(index)
+    const selectedTemplate = displayedSuggestions[index].template
+    setTemplateValue(selectedTemplate)
+    const errors = validateTemplate(selectedTemplate)
+    setTemplateErrors(errors)
   }
 
   const handleTemplateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -368,7 +441,6 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                       >
                         <div className="text-sm leading-tight whitespace-nowrap">
                           {step.label}
-                          {step.skippable && <span className="font-normal text-[#6B7280]"> (optional)</span>}
                         </div>
                 </button>
                     </div>
@@ -497,137 +569,149 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                 <div>
                   <h3 className="text-base font-semibold text-[#111827] mb-1">Title settings</h3>
                   <p className="text-sm text-[#6B7280] mb-6">
-                    Create a title template that automatically fills in information when users create items. For example, use {`{creator}`} to show who created it, or {`{field.start}`} and {`{field.end}`} for dates. The system will replace these placeholders with actual values.
+                    Automatically generate titles using information from the form. Titles update dynamically based on what users enter in each field.
                   </p>
 
-                  {!showManualSetup ? (
-                    <div key="ai-view">
-                      {/* Automatic Title Template Card */}
-                      <div className="mb-4 border border-[#E5E7EB] rounded-lg bg-white p-4">
-                        {/* Card Header with Toggle */}
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1">
-                            <h4 className="text-sm font-semibold text-[#111827]">Automatic Title Template</h4>
-                          </div>
-                      <button
-                        onClick={() => setTemplateEnabled(!templateEnabled)}
-                        className={cn(
-                              "relative w-9 h-5 rounded-full transition-colors ml-4 flex-shrink-0",
-                          templateEnabled ? "bg-[#3B82F6]" : "bg-[#E5E7EB]",
-                        )}
-                      >
-                        <span
+                  {/* Automatic Title Generation Card */}
+                  <div className="mb-4 border border-[#E5E7EB] rounded-lg bg-white p-4">
+                    {/* Card Header with Toggle */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-[#111827]">Automatic title generation from form data and custom fields</h4>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <button
+                          onClick={handleToggleEnabled}
+                          disabled={isGeneratingSuggestions}
                           className={cn(
-                            "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform",
-                            templateEnabled && "translate-x-4",
+                            "relative w-9 h-5 rounded-full transition-colors flex-shrink-0",
+                            templateEnabled ? "bg-[#3B82F6]" : "bg-[#E5E7EB]",
+                            isGeneratingSuggestions && "opacity-50 cursor-not-allowed"
                           )}
-                        />
-                      </button>
-                    </div>
-
-                        {/* Current AI Suggestion Card */}
-                        {templateEnabled && currentAISuggestionIndex < aiSuggestions.length && (
-                          <div>
-                          {/* Description with Navigation */}
-                          <div className="flex items-center justify-between mb-4 min-h-[40px]">
-                            <p className="text-sm text-[#6B7280] flex-1 min-h-[40px] flex items-center">
-                              {aiSuggestions[currentAISuggestionIndex].description}
-                            </p>
-                            {!showManualSetup && aiSuggestions.length > 1 && (
-                              <div className="flex items-center gap-2 ml-4">
-                                <button
-                                  onClick={goToPreviousSuggestion}
-                                  className="w-8 h-8 flex items-center justify-center rounded-md transition-colors text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] bg-white border border-[#D1D5DB]"
-                                  title="Previous suggestion"
-                                >
-                                  <ChevronLeft className="w-4 h-4" />
-                                </button>
-                                <span className="text-xs text-[#6B7280] min-w-[60px] text-center">
-                                  {currentAISuggestionIndex + 1} / {aiSuggestions.length}
-                                </span>
-                                <button
-                                  onClick={goToNextSuggestion}
-                                  className="w-8 h-8 flex items-center justify-center rounded-md transition-colors text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#111827] bg-white border border-[#D1D5DB]"
-                                  title="Next suggestion"
-                                >
-                                  <ChevronRight className="w-4 h-4" />
-                                </button>
-                              </div>
+                        >
+                          <span
+                            className={cn(
+                              "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform",
+                              templateEnabled && "translate-x-4",
                             )}
-                          </div>
-
-                          {/* Inline Template Display */}
-                          <div className="mb-4 space-y-2">
-                            <div className="relative">
-                              <div className="bg-[#F9FAFB] border border-[#D1D5DB] rounded-md p-3">
-                                <input
-                                  type="text"
-                                  value={templateValue}
-                                  readOnly
-                                  className="w-full text-xs font-mono focus:outline-none bg-transparent text-[#111827] cursor-default"
-                                />
-                              </div>
-                              <div className="mt-2 flex items-center justify-between">
-                                <p className="text-xs text-[#6B7280]">Need to customize this?</p>
-                                <button
-                                  onClick={() => setShowManualSetup(true)}
-                                  className="text-xs text-[#2563EB] hover:underline font-medium"
-                                >
-                                  Edit template
-                                </button>
-                              </div>
-                            </div>
-
-                            </div>
-
-                          {/* Preview */}
-                          <div className="mb-4 p-3 bg-[#EFF6FF] border border-[#DBEAFE] rounded-md">
-                            <div className="flex items-start justify-between mb-1">
-                              <p className="text-xs font-semibold text-[#1E40AF]">Preview:</p>
-                              <span className={cn(
-                                "text-xs",
-                                templateErrors.length > 0 ? "text-red-600" : "text-green-600"
-                              )}>
-                                {templateErrors.length > 0 ? "❌ Invalid" : "✅ Ready"}
-                              </span>
-                            </div>
-                            <p className="text-xs text-[#1E3A8A]">
-                              {previewText || "No preview available"}
-                            </p>
-                          </div>
-                        </div>
-                        )}
-
-                        {/* Manual Setup Link - Low Priority */}
-                        {templateEnabled && (
-                          <div className="mt-4 pt-3 border-t border-[#E5E7EB]">
-                            <div className="flex items-center justify-start gap-2">
-                              <p className="text-sm text-[#111827]">
-                                Not satisfied with these suggestions?
-                              </p>
-                              <button
-                                onClick={() => setShowManualSetup(true)}
-                                className="px-3 py-1.5 text-xs font-medium text-[#2563EB] border border-[#2563EB] rounded-md hover:bg-[#EFF6FF] transition-colors"
-                              >
-                                Set up manually
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          />
+                        </button>
                       </div>
                     </div>
-                  ) : (
+
+                    {/* Content - показується тільки коли templateEnabled === true */}
+                    {templateEnabled && (
+                      <>
+                        {isGeneratingSuggestions ? (
+                          <div className="py-8">
+                            <div className="flex flex-col items-center justify-center space-y-3">
+                              <div className="w-8 h-8 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+                              <p className="text-sm text-[#6B7280]">Generating title options...</p>
+                            </div>
+                          </div>
+                        ) : !showManualSetup ? (
+                          <div key="ai-view">
+                            {/* AI Suggestions Section */}
+                            <div className="mb-4">
+                              <div className="flex items-center gap-3 mb-4">
+                                <p className="text-sm text-[#6B7280] flex-1">
+                                  Here are a few options for how your titles could look: Pick the one that works best for you.
+                                </p>
+                                <button
+                                  onClick={generateNewOptions}
+                                  disabled={isGeneratingSuggestions}
+                                  className="flex items-center justify-center w-9 h-9 text-[#2563EB] border border-[#2563EB] rounded-md hover:bg-[#EFF6FF] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                                  title="Generate new options"
+                                >
+                                  <RefreshCw className={cn("w-4 h-4", isGeneratingSuggestions && "animate-spin")} />
+                                </button>
+                              </div>
+
+                              {/* Radio Group for AI Suggestions */}
+                              <RadioGroup 
+                                value={selectedSuggestionIndex !== null ? selectedSuggestionIndex.toString() : undefined}
+                                onValueChange={(value) => handleSelectSuggestion(parseInt(value))}
+                                className="space-y-0.5"
+                              >
+                                {displayedSuggestions.map((suggestion, index) => {
+                                  const previewText = generatePreviewText(suggestion.template)
+                                  const isSelected = selectedSuggestionIndex === index
+                                  return (
+                                    <div
+                                      key={index}
+                                      className={cn(
+                                        "flex items-start space-x-3 p-3 border rounded-md transition-colors",
+                                        isSelected
+                                          ? "border-[#2563EB] bg-[#EFF6FF]"
+                                          : "border-[#E5E7EB] bg-white hover:border-[#D1D5DB]"
+                                      )}
+                                    >
+                                      <RadioGroupItem
+                                        value={index.toString()}
+                                        id={`suggestion-${index}`}
+                                        className="mt-0.5 data-[state=checked]:border-[#2563EB] [&[data-state=checked]>span>svg]:fill-[#2563EB]"
+                                      />
+                                      <label
+                                        htmlFor={`suggestion-${index}`}
+                                        className="flex-1 cursor-pointer"
+                                      >
+                                        <p className="text-sm text-[#111827] font-medium">
+                                          {previewText}
+                                        </p>
+                                      </label>
+                                      {isSelected && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setShowManualSetup(true)
+                                          }}
+                                          className="text-sm text-[#2563EB] hover:underline font-medium ml-2"
+                                        >
+                                          Edit
+                                        </button>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </RadioGroup>
+                            </div>
+
+                            {/* Metadata для вибраного варіанту */}
+                            {selectedSuggestionIndex !== null && displayedSuggestions[selectedSuggestionIndex] && (
+                              <div className="mt-4 p-3 bg-[#F9FAFB] border border-[#E5E7EB] rounded-md">
+                                <p className="text-xs font-semibold text-[#111827] mb-2">How this title is generated:</p>
+                                <p className="text-xs text-[#6B7280] font-mono bg-white px-2 py-1 rounded border border-[#E5E7EB]">
+                                  {displayedSuggestions[selectedSuggestionIndex].template}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Manual Customization Link */}
+                            <div className="mt-4 pt-3 border-t border-[#E5E7EB]">
+                              <div className="flex items-center justify-start gap-3">
+                                <p className="text-sm text-[#111827]">
+                                  Don't like any of these options?
+                                </p>
+                                <button
+                                  onClick={() => setShowManualSetup(true)}
+                                  className="text-sm text-[#2563EB] hover:underline font-medium"
+                                >
+                                  Customize manually
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
                     <div key="manual-view">
                       <div className="mb-4">
                         <div className="flex items-center justify-between mb-3">
                           <div>
-                            <h4 className="text-sm font-semibold text-[#111827] mb-1">Automatic Title Template</h4>
-                            <p className="text-xs text-[#6B7280]">Configure automatic title generation (optional)</p>
+                            <h4 className="text-sm font-semibold text-[#111827] mb-1">Customize title template</h4>
+                            <p className="text-sm text-[#6B7280]">Edit the template to customize how titles are generated from form data and custom fields.</p>
                           </div>
                           <button
                             onClick={() => {
                               setShowManualSetup(false)
-                              setCurrentAISuggestionIndex(0)
                             }}
                             className="text-xs text-[#2563EB] hover:underline"
                           >
@@ -695,7 +779,7 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                           </div>
                         )}
                       </div>
-                      </div>
+                        </div>
 
                       <div className="flex gap-2 mt-3">
                           <button
@@ -713,15 +797,15 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                       <div className="mt-3 p-3 bg-[#EFF6FF] border border-[#DBEAFE] rounded-md">
                         <div className="flex items-start justify-between mb-1">
                           <p className="text-xs font-semibold text-[#1E40AF]">Preview:</p>
-                          {templateValue && (
+                        {templateValue && (
                             <span className={cn(
                               "text-xs",
                               templateErrors.length > 0 ? "text-red-600" : "text-green-600"
                             )}>
                               {templateErrors.length > 0 ? "❌ Invalid" : "✅ Valid"}
                             </span>
-                          )}
-                        </div>
+                        )}
+                      </div>
                         <p className="text-xs text-[#1E3A8A] mb-2">
                           {templateValue ? (previewText || "No preview available") : "Enter a template to see preview"}
                         </p>
@@ -736,7 +820,10 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
                         )}
                       </div>
                     </div>
-                  )}
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 
