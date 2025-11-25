@@ -177,11 +177,11 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     }
   }, [templateValue])
   
-  // Автоматично вибираємо третю опцію при включенні тоглу (тільки якщо не генеруємо)
+  // Автоматично вибираємо першу опцію при включенні тоглу (тільки якщо не генеруємо)
   useEffect(() => {
     if (templateEnabled && !showManualSetup && !isGeneratingSuggestions && displayedSuggestions.length > 0 && selectedSuggestionIndex === null) {
-      setSelectedSuggestionIndex(2) // Третя опція вибрана за замовчуванням (як на скріншоті)
-      const selectedTemplate = displayedSuggestions[2].template
+      setSelectedSuggestionIndex(0) // Перша опція вибрана за замовчуванням
+      const selectedTemplate = displayedSuggestions[0].template
       setTemplateValue(selectedTemplate)
       const errors = validateTemplate(selectedTemplate)
       setTemplateErrors(errors)
@@ -301,10 +301,10 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
       setIsGeneratingSuggestions(true)
       setTimeout(() => {
         setIsGeneratingSuggestions(false)
-        // Автоматично вибираємо третю опцію
+        // Автоматично вибираємо першу опцію
         if (displayedSuggestions.length > 0 && selectedSuggestionIndex === null) {
-          setSelectedSuggestionIndex(2)
-          const selectedTemplate = displayedSuggestions[2].template
+          setSelectedSuggestionIndex(0)
+          const selectedTemplate = displayedSuggestions[0].template
           setTemplateValue(selectedTemplate)
           const errors = validateTemplate(selectedTemplate)
           setTemplateErrors(errors)
