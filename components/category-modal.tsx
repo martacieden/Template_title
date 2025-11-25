@@ -177,14 +177,11 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     }
   }, [templateValue])
   
-  // Автоматично вибираємо першу опцію при включенні тоглу (тільки якщо не генеруємо)
+  // Автоматично вибираємо першу опцію після завершення генерації
   useEffect(() => {
     if (templateEnabled && !showManualSetup && !isGeneratingSuggestions && displayedSuggestions.length > 0 && selectedSuggestionIndex === null) {
-      setSelectedSuggestionIndex(0) // Перша опція вибрана за замовчуванням
-      const selectedTemplate = displayedSuggestions[0].template
-      setTemplateValue(selectedTemplate)
-      const errors = validateTemplate(selectedTemplate)
-      setTemplateErrors(errors)
+      // Нехай handleToggleEnabled керує вибором при включенні
+      // Цей useEffect тільки для випадків, коли displayedSuggestions змінюються
     }
   }, [templateEnabled, showManualSetup, isGeneratingSuggestions, displayedSuggestions, selectedSuggestionIndex])
 
@@ -297,12 +294,15 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
     setTemplateEnabled(newValue)
     
     if (newValue) {
+      // Спочатку скидаємо вибір
+      setSelectedSuggestionIndex(null)
+      setTemplateValue("")
       // Показуємо лоадер при включенні
       setIsGeneratingSuggestions(true)
       setTimeout(() => {
         setIsGeneratingSuggestions(false)
-        // Автоматично вибираємо першу опцію
-        if (displayedSuggestions.length > 0 && selectedSuggestionIndex === null) {
+        // Автоматично вибираємо першу опцію після завершення генерації
+        if (displayedSuggestions.length > 0) {
           setSelectedSuggestionIndex(0)
           const selectedTemplate = displayedSuggestions[0].template
           setTemplateValue(selectedTemplate)
