@@ -572,14 +572,14 @@ export function CategoryModal({ open, onOpenChange }: CategoryModalProps) {
               {currentStep === 4 && (
                 <div>
                   <h3 className="text-base font-semibold text-[#111827] mb-1">Title settings</h3>
-                  <p className="text-sm text-[#6B7280] mb-6">
+                  <p className="text-sm text-[#6B7280] mb-6 min-h-[48px]">
                     Automatically generate titles using information based on the form. Titles update dynamically based on what users enter in each field.
                   </p>
 
                   {/* Automatic Title Generation Card */}
                   <div className="mb-4 border border-[#E5E7EB] rounded-lg bg-white p-4">
                     {/* Card Header with Toggle */}
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4">
                       <div className="flex-1">
                         <h4 className="text-sm font-semibold text-[#111827]">Generate titles automatically</h4>
                       </div>
